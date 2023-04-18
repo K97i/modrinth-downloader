@@ -1,4 +1,4 @@
-import multiprocessing
+import threading
 import requests
 import json
 import os
@@ -7,8 +7,6 @@ def compile_list():
     """ Queries Modrinth for the mod's slugs """
     x=0
     array = []
-
-    print(mc_framework, mc_version)
 
     with open('modlist.txt', 'r') as file:
         searchlist = file.readlines()
@@ -100,9 +98,6 @@ if __name__ == "__main__":
 
     print("Please wait!")
 
-    threads = []
-
     for item in list:
-        thread = multiprocessing.Process(target=download, args=(item, mc_framework, mc_version,))
-        threads.append(threads)
-        thread.start()
+        x = threading.Thread(target=download, args=(item, mc_framework, mc_version))
+        x.start()
