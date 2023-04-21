@@ -1,8 +1,13 @@
 from multiprocessing.pool import ThreadPool
+from tkinter import filedialog as fd
 from requests import get
 from json import loads
+import tkinter as tk
 import zipfile
 import os
+
+root = tk.Tk()
+root.withdraw()
 
 def query(item, mc_framework, mc_version):
     link = f'https://api.modrinth.com/v2/search?query={item}&facets=[["categories:{mc_framework}"],["versions:{mc_version}"]]'
@@ -21,6 +26,11 @@ def get_files():
     modversionsminor = []
     modversionbase = ""
     modversionminor = ""
+
+    path = fd.askdirectory()
+    if not path:
+        exit()
+    os.chdir(path)
 
     for x in os.listdir():
         filename, file_ext = os.path.splitext(x)
@@ -59,7 +69,6 @@ def get_files():
             modversionminor = i
 
     modversion = modversionbase + "." + modversionminor
-    print(modnames)
 
     return modnames, modversion, modfilenames
 
@@ -74,7 +83,6 @@ def get_list():
 
     print("Mod Loader? (fabric, forge)")
     mc_framework = input()
-    print(modfilenames)
 
     for item in searchlist:
         thread = pool.apply(query, (item, mc_framework, mc_version))
@@ -87,8 +95,6 @@ def get_list():
             "slug": thread,
             "filename": modfilenames[len(array)+len(not_found)]
         }
-
-        print(dict)
 
         x+=1
         print(f'{x}: {item} => {thread}')
