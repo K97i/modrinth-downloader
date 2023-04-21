@@ -1,7 +1,13 @@
 from multiprocessing.pool import ThreadPool
+from tkinter import filedialog as fd
 from requests import get
 from json import loads
+import tkinter as tk
+import jellyfish
 import os
+
+root = tk.Tk()
+root.withdraw()
 
 def query(item, mc_framework, mc_version):
     link = f'https://api.modrinth.com/v2/search?query={item}&facets=[["categories:{mc_framework}"],["versions:{mc_version}"]]'
@@ -13,10 +19,18 @@ def query(item, mc_framework, mc_version):
     except:
         return False
 
+def checkbadmod(filename, modfilename):
+    count = jellyfish.levenshtein_distance(filename, modfilename)
+    if count > len(modfilename) / 2:
+        return True
+    else:
+        return False
+
 def get_list(mc_framework, mc_version):
     """ Queries Modrinth for the mod's slugs """
     x=0
     array = []
+    not_found = []
 
     with open('modlist.txt', 'r') as file:
         searchlist = file.readlines()
@@ -25,10 +39,21 @@ def get_list(mc_framework, mc_version):
 
     for item in searchlist:
         thread = pool.apply(query, (item, mc_framework, mc_version))
+
+        # Check if mod is actually the same mod
+        if checkbadmod(item, thread):
+            not_found.append(item)
+            continue
+
         array.append(thread)
         print(f"{x+1}: {item} => {thread}")
         x+=1
 
+    if not_found:
+        print("\n")
+        for item in not_found:
+            print("\033[91m"+ f"{item} => Not found on Modrinth!" + "\033[0m")
+    
     inp = ""
 
     while inp != "done":
@@ -98,10 +123,8 @@ def main():
 
     list = get_list(mc_framework, mc_version)
 
-    if not os.path.exists('./downloaded-mods'):
-        os.mkdir('./downloaded-mods')
-
-    os.chdir('./downloaded-mods')
+    print("Select mod folder please!")
+    os.chdir(fd.askdirectory(initialdir=os.getcwd()))
 
     print("Please wait!")
 

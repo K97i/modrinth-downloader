@@ -3,8 +3,10 @@ from tkinter import filedialog as fd
 from requests import get
 from json import loads
 import tkinter as tk
+import jellyfish
 import zipfile
 import os
+import re
 
 root = tk.Tk()
 root.withdraw()
@@ -30,6 +32,8 @@ def get_files():
     path = fd.askdirectory()
     if not path:
         exit()
+    
+    print(path, " <= path")
     os.chdir(path)
 
     for x in os.listdir():
@@ -43,7 +47,7 @@ def get_files():
             jsonfile = loads(jarfile.read("fabric.mod.json"))
             modfilenames.append(x)
             modnames.append(jsonfile["name"])
-            modversionsbase.append(jsonfile["depends"]["minecraft"].rsplit('.', 1)[0])
+            modversionsbase.append(cleanversion(jsonfile["depends"]["minecraft"].rsplit('.', 1)[0]))
             modversionsminor.append(jsonfile["depends"]["minecraft"].split('.')[2])
         except:
             continue
@@ -69,8 +73,15 @@ def get_files():
             modversionminor = i
 
     modversion = modversionbase + "." + modversionminor
+    print("Guessed Minecraft Version: ", modversion)
 
-    return modnames, modversion, modfilenames
+    return modnames, modfilenames, modversion
+
+def cleanversion(modf):
+    a = ""
+    for string in modf:
+        a += re.sub(re.compile(r'[~<=>]+'), '', string)
+    return a
 
 def get_list():
     """ Queries Modrinth for the mod's slugs """
@@ -78,7 +89,7 @@ def get_list():
     array = []
     not_found = []
 
-    searchlist, mc_version, modfilenames = get_files()
+    searchlist, modfilenames, mc_version = get_files()
     pool = ThreadPool(processes=len(searchlist))
 
     print("Mod Loader? (fabric, forge)")
@@ -88,6 +99,11 @@ def get_list():
         thread = pool.apply(query, (item, mc_framework, mc_version))
 
         if not thread:
+            not_found.append(item)
+            continue
+
+        # Check if mod is actually the same mod
+        if checkbadmod(item, thread):
             not_found.append(item)
             continue
         
@@ -134,6 +150,13 @@ def get_list():
             continue
     return array, mc_version, mc_framework
 
+def checkbadmod(filename, modfilename):
+    count = jellyfish.levenshtein_distance(filename, modfilename)
+    if count > len(modfilename) / 2:
+        return True
+    else:
+        return False
+
 def download(tup, mc_version, mc_framework):
     """ Grabs the latest download """
 
@@ -151,9 +174,10 @@ def download(tup, mc_version, mc_framework):
     if not mod_download:
         print(f"Can't find appropriate version for {item}!")
         return
+    
+    filename = mod_download["files"][0]["filename"]
 
     # Check if filename matches
-    filename = mod_download["files"][0]["filename"]
     if filename == modfilename:
         print(f'{item} is up-to-date! Yay!')
         return
@@ -164,16 +188,15 @@ def download(tup, mc_version, mc_framework):
 
     # Write to Disk
     open(f"{filename}", 'wb').write(mod_file)
-    print(f"{filename} has been downloaded for {item}!")
+    os.remove(modfilename)
+    print(f"{item} has been updated! ({filename})")
 
 def main():
     pool = ThreadPool(processes=64)
     list, mc_version, mc_framework = get_list()
 
-    if not os.path.exists('./updated-mods'):
-        os.mkdir('./updated-mods')
-
-    os.chdir('./updated-mods')
+    print("Select mod folder please!")
+    os.chdir(fd.askdirectory(initialdir=os.getcwd()))
 
     print("Please wait!")
 
