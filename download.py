@@ -1,9 +1,19 @@
-import threading
-import requests
-import json
+from multiprocessing.pool import ThreadPool
+from requests import get
+from json import loads
 import os
 
-def compile_list():
+def query(item, mc_framework, mc_version):
+    link = f'https://api.modrinth.com/v2/search?query={item}&facets=[["categories:{mc_framework}"],["versions:{mc_version}"]]'
+    req = get(link)
+    cont = loads(req.content)
+
+    try:
+        return cont["hits"][0]["slug"]
+    except:
+        return False
+
+def get_list(mc_framework, mc_version):
     """ Queries Modrinth for the mod's slugs """
     x=0
     array = []
@@ -11,14 +21,12 @@ def compile_list():
     with open('modlist.txt', 'r') as file:
         searchlist = file.readlines()
 
+    pool = ThreadPool(processes=len(searchlist))
+
     for item in searchlist:
-
-        link = f'https://api.modrinth.com/v2/search?query={item}&facets=[["categories:{mc_framework}"],["versions:{mc_version}"]]'
-        req = requests.get(link)
-        cont = json.loads(req.content)
-
-        array.append(cont["hits"][0]["slug"])
-        print(f"{x+1}: {item} => {array[x]}")
+        thread = pool.apply(query, (item, mc_framework, mc_version))
+        array.append(thread)
+        print(f"{x+1}: {item} => {thread}")
         x+=1
 
     inp = ""
@@ -39,11 +47,9 @@ def compile_list():
             int(inp)
             try:
                 print(f'What would you like to change {array[int(inp)-1]} to? ')
-                link = f'https://api.modrinth.com/v2/search?query={input()}&facets=[["categories:{mc_framework}"],["versions:{mc_version}"]]'
-                req = requests.get(link)
-                cont = json.loads(req.content)
-                array[int(inp)-1] = cont["hits"][0]["slug"]
-                print(f'=> {cont["hits"][0]["slug"]}')
+                thread = pool.apply(query, (input(), mc_framework, mc_version))
+                array[int(inp)-1] = thread
+                print(f'=> {thread}')
                 continue
             except:
                 print("Error!")
@@ -56,9 +62,9 @@ def download(item, mc_framework, mc_version):
     """ Grabs the latest download """
 
     # Get Available Versions
-    req = requests.get(f"https://api.modrinth.com/v2/project/{item}/version")
+    req = get(f"https://api.modrinth.com/v2/project/{item}/version")
 
-    for mod_version in json.loads(req.content):
+    for mod_version in loads(req.content):
         if mc_version in mod_version["game_versions"] and mc_framework in mod_version["loaders"]:
             mod_download = mod_version
             break
@@ -68,14 +74,15 @@ def download(item, mc_framework, mc_version):
         return
 
     # Actually download it
-    mod_file = requests.get(mod_download["files"][0]["url"]).content
+    mod_file = get(mod_download["files"][0]["url"]).content
     filename = mod_download["files"][0]["filename"]
 
     # Write to Disk
     open(f"{filename}", 'wb').write(mod_file)
     print(f"{filename} has been downloaded for {item}!")
 
-if __name__ == "__main__":
+def main():
+    pool = ThreadPool(processes=64)
     print("What version? (1.19.2, 1.16.5, etc) ")
     mc_version = input()
 
@@ -89,7 +96,7 @@ if __name__ == "__main__":
         input()
         os._exit(1)
 
-    list = compile_list()
+    list = get_list(mc_framework, mc_version)
 
     if not os.path.exists('./downloaded-mods'):
         os.mkdir('./downloaded-mods')
@@ -99,5 +106,7 @@ if __name__ == "__main__":
     print("Please wait!")
 
     for item in list:
-        x = threading.Thread(target=download, args=(item, mc_framework, mc_version))
-        x.start()
+        pool.apply(download, (item, mc_version, mc_framework, ))
+
+if __name__ == "__main__":
+    main()
