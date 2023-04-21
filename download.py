@@ -20,6 +20,8 @@ def query(item, mc_framework, mc_version):
         return False
 
 def checkbadmod(filename, modfilename):
+    if filename.find(modfilename):
+        return False
     count = jellyfish.levenshtein_distance(filename, modfilename)
     if count > len(modfilename) / 2:
         return True
@@ -40,9 +42,22 @@ def get_list(mc_framework, mc_version):
     for item in searchlist:
         thread = pool.apply(query, (item, mc_framework, mc_version))
 
+        if not thread:
+            dict = {
+                "name": item,
+                "reason": "No Mod Found"
+            }
+            not_found.append(dict)
+            continue
+
         # Check if mod is actually the same mod
         if checkbadmod(item, thread):
-            not_found.append(item)
+            dict = {
+                "name": item,
+                "query": thread,
+                "reason": "Bad Mod",
+            }
+            not_found.append(dict)
             continue
 
         array.append(thread)
@@ -52,7 +67,11 @@ def get_list(mc_framework, mc_version):
     if not_found:
         print("\n")
         for item in not_found:
-            print("\033[91m"+ f"{item} => Not found on Modrinth!" + "\033[0m")
+            match item['reason']:
+                case "Bad Mod":
+                    print("\033[91m"+ f"{item['name']} => Not found on Modrinth! (Wrong Mod Found, Found: {item['query']})" + "\033[0m")
+                case "No Mod Found":
+                    print("\033[91m"+ f"{item['name']} => Not found on Modrinth! (No mod found.)" + "\033[0m")
     
     inp = ""
 
