@@ -5,7 +5,6 @@ from json import loads as loadjson
 from tomllib import loads as loadtoml
 import jellyfish
 import zipfile
-import asyncio
 import os
 import re
 
@@ -14,9 +13,32 @@ def query(item, mc_framework, mc_version):
     req = get(link)
     cont = loadjson(req.content)
 
-    try:
-        return cont["hits"][0]["slug"]
-    except:
+    # Check if recieved query is blank
+    if not cont["hits"]:
+        return False, None
+
+    # Check if any query is not the query
+    for slug in cont["hits"]:
+        
+        levcomp = 0.0
+        current = ""
+        tf, lev = checkbadmod(item, slug["slug"], mc_framework)
+        
+        if not tf:
+            return slug["slug"], None
+        
+        if levcomp > lev:
+            current = tf
+            levcomp = lev
+    
+    return False, current
+
+def checkbadmod(filename, modfilename, modframework):
+    if filename.find(re.sub('\s+','',modfilename).lower()) != -1 and filename.find(modframework) != -1:
+        return False
+    elif jellyfish.levenshtein_distance(filename, modfilename) > len(modfilename) / 2:
+        return True
+    else:
         return False
 
 def get_files():
@@ -124,30 +146,32 @@ def get_list():
     pool = ThreadPool(processes=len(searchlist))
 
     for item in modids:
-        thread = pool.apply(query, (item, mc_framework, mc_version))
+        thread, badmod = pool.apply(query, (item, mc_framework, mc_version))
 
         # Check if query returns empty
         if not thread:
-            dict = {
-                "name": searchlist[y],
-                "id": item,
-                "reason": "No Mod Found"
-            }
-            not_found.append(dict)
-            y += 1
-            continue
-
-        # Check if mod is not the same mod
-        if checkbadmod(item, thread, mc_framework):
-            dict = {
-                "name": searchlist[y],
-                "id": item,
-                "query": thread,
-                "reason": "Bad Mod",
-            }
-            not_found.append(dict)
-            y += 1
-            continue
+            # If different mod found
+            if badmod:
+                dict = {
+                    "name": searchlist[y],
+                    "id": item,
+                    "query": thread,
+                    "reason": "Bad Mod",
+                }
+                not_found.append(dict)
+                y += 1
+                continue
+            
+            # If no mod was found
+            else: 
+                dict = {
+                    "name": searchlist[y],
+                    "id": item,
+                    "reason": "No Mod Found"
+                }
+                not_found.append(dict)
+                y += 1
+                continue
         
         dict = {
             "slug": thread,
@@ -221,14 +245,6 @@ def get_list():
         os.system('pause')
         exit()
     return array, mc_version, mc_framework
-
-def checkbadmod(filename, modfilename, modframework):
-    if filename.find(re.sub('\s+','',modfilename).lower()) != -1 and filename.find(modframework) != -1:
-        return False
-    elif jellyfish.levenshtein_distance(filename, modfilename) > len(modfilename) / 2:
-        return True
-    else:
-        return False
 
 def download(tup, mc_version, mc_framework):
     """ Grabs the latest download """
