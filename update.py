@@ -53,7 +53,7 @@ def get_files():
 
     path = fd.askdirectory()
     if not path:
-        exit()
+        os._exit(-1)
     
     print(path, " <= path")
     os.chdir(path)
@@ -243,7 +243,7 @@ def get_list():
     else:
         print("Empty mod list!")
         os.system('pause')
-        exit()
+        os._exit(-1)
     return array, mc_version, mc_framework
 
 def download(tup, mc_version, mc_framework):
@@ -291,7 +291,7 @@ def main():
     if not path:
         print("No folder selected!")
         os.system('pause')
-        exit()
+        os._exit(-1)
 
     os.chdir(path)
     os.mkdir('./updated-mods')
@@ -301,10 +301,6 @@ def main():
 
     for item in list:
         pool.apply(download, (item, mc_version, mc_framework, ))
-
-    print("Update Complete! Thanks for using this!")
-    print("Bye! -K97i")
-    os.system('pause')
 
 if __name__ == "__main__":
     main()

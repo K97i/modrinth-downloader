@@ -98,20 +98,6 @@ def get_list(mc_framework, mc_version):
 
     while inp != "done":
 
-        x = 0
-        for item in array:
-            print(f'{x+1}: {searchlist[x]} => {array[x]}')
-            x += 1
-
-        if not_found:
-            print("\n")
-            for item in not_found:
-                match item['reason']:
-                    case "Bad Mod":
-                        print("\033[91m"+ f"{item['name']} => Not found on Modrinth! (Wrong Mod Found, Found: {item['query']})" + "\033[0m")
-                    case "No Mod Found":
-                        print("\033[91m"+ f"{item['name']} => Not found on Modrinth! (No mod found.)" + "\033[0m")
-
         print("Would you like to change any of the items?")
         print("Enter the number you would like to change")
         print("OR enter 'done' if you are okay with the list")
@@ -136,16 +122,41 @@ def get_list(mc_framework, mc_version):
 
                 if ch == "change":
                     print(f'What would you like to change {array[int(inp)-1]} to? ')
-                    thread = pool.apply(query, (input(), mc_framework, mc_version))
-                    array[int(inp)-1] = thread
-                    print(f'=> {thread}')
+                    search = input()
+                    thread = pool.apply(query, (search, mc_framework, mc_version))
+                    if not thread[0]:
+                        print("Error!")
+                        if thread[1]:
+                            print(f'Closest mod found is {thread[1]}')
+                        else:
+                            print("No mod found.")
+                        continue
+
+                    searchlist[int(inp)-1] = search
+                    array[int(inp)-1] = thread[0]
+                    print(f'=> {thread[0]}')
+
+                x = 0
+                for item in array:
+                    print(f'{x+1}: {searchlist[x]} => {array[x]}')
+                    x += 1
+
+                if not_found:
+                    print("\n")
+                    for item in not_found:
+                        match item['reason']:
+                            case "Bad Mod":
+                                print("\033[91m"+ f"{item['name']} => Not found on Modrinth! (Wrong Mod Found, Found: {item['query']})" + "\033[0m")
+                            case "No Mod Found":
+                                print("\033[91m"+ f"{item['name']} => Not found on Modrinth! (No mod found.)" + "\033[0m")
                     
                 continue
             except:
                 print("Error!")
                 continue
         except:
-            continue
+            continue    
+
     return array
 
 def download(item, mc_framework, mc_version):
@@ -175,18 +186,19 @@ def download(item, mc_framework, mc_version):
 
 def main():
     pool = ThreadPool(processes=64)
+
+    if not os.path.isfile("modlist.txt"):
+        open("modlist.txt", "wb").write(b'Insert mods here!')
+        print("Please enter the names of the mods you would like to download.")
+        print("Re-run the program when you have done so. Press any key to exit.")
+        os.system('pause')
+        os._exit(1)
+
     print("What version? (1.19.2, 1.16.5, etc) ")
     mc_version = input()
 
     print("Modloader? (fabric, forge, quilt) ")
     mc_framework = input()
-
-    if not os.path.isfile("modlist.txt"):
-        open("modlist.txt", "wb").write()
-        print("Please enter the names of the mods you would like to download.")
-        print("Re-run the program when you have done so. Press Enter key to exit.")
-        input()
-        os._exit(1)
 
     list = get_list(mc_framework, mc_version)
 
