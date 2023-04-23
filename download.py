@@ -194,6 +194,11 @@ def main():
         os.system('pause')
         os._exit(1)
 
+    if os.stat("modlist.txt").st_size == 0:
+        print("Please fill the text file! (Remember to save!)")
+        os.system('pause')
+        os._exit(1)
+
     print("What version? (1.19.2, 1.16.5, etc) ")
     mc_version = input()
 
