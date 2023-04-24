@@ -1,6 +1,7 @@
-import update
-import download
 import os
+
+import download
+import update
 
 print("What would you like to do? (download, update)")
 inp = input()

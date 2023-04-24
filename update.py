@@ -1,45 +1,12 @@
+import os
+import zipfile
+from json import loads as loadjson
 from multiprocessing.pool import ThreadPool
 from tkinter import filedialog as fd
-from requests import get
-from json import loads as loadjson
+
 from tomllib import loads as loadtoml
-import jellyfish
-import zipfile
-import os
-import re
 
-def query(item, mc_framework, mc_version):
-    link = f'https://api.modrinth.com/v2/search?query={item}&facets=[["categories:{mc_framework}"],["versions:{mc_version}"]]'
-    req = get(link)
-    cont = loadjson(req.content)
-
-    # Check if recieved query is blank
-    if not cont["hits"]:
-        return False, None
-
-    # Check if any query is not the query
-    for slug in cont["hits"]:
-        
-        levcomp = 0.0
-        current = ""
-        tf, lev = checkbadmod(item, slug["slug"], mc_framework)
-        
-        if not tf:
-            return slug["slug"], None
-        
-        if levcomp > lev:
-            current = tf
-            levcomp = lev
-    
-    return False, current
-
-def checkbadmod(filename, modfilename, modframework):
-    if filename.find(re.sub('\s+','',modfilename).lower()) != -1 and filename.find(modframework) != -1:
-        return False
-    elif jellyfish.levenshtein_distance(filename, modfilename) > len(modfilename) / 2:
-        return True
-    else:
-        return False
+import common
 
 def get_files():
     modnames = []
@@ -57,6 +24,11 @@ def get_files():
     
     print(path, " <= path")
     os.chdir(path)
+
+    if not os.listdir():
+        print("Empty directory!")
+        os.system('pause')
+        os._exit(-1)
 
     for x in os.listdir():
         filename, file_ext = os.path.splitext(x)
@@ -80,7 +52,7 @@ def get_files():
 
                 # Some mods don't have this for some reason
                 try:
-                    modversionsbase.append(cleanversion(jsonfile["depends"]["minecraft"].rsplit('.', 1)[0]))
+                    modversionsbase.append(common.cleanversion(jsonfile["depends"]["minecraft"].rsplit('.', 1)[0]))
                     modversionsminor.append(jsonfile["depends"]["minecraft"].rsplit('.', 1)[1])
                 except:
                     continue
@@ -129,12 +101,6 @@ def get_files():
 
     return modnames, modids, modfilenames, modversion, modframework, badmods
 
-def cleanversion(modf):
-    a = ""
-    for string in modf:
-        a += re.sub(re.compile(r'[~<=>]+'), '', string)
-    return a
-
 def get_list():
     """ Queries Modrinth for the mod's slugs """
     x = 0
@@ -146,7 +112,7 @@ def get_list():
     pool = ThreadPool(processes=len(searchlist))
 
     for item in modids:
-        thread, badmod = pool.apply(query, (item, mc_framework, mc_version))
+        thread, badmod = pool.apply(common.query, (item, mc_framework, mc_version))
 
         # Check if query returns empty
         if not thread:
@@ -231,7 +197,7 @@ def get_list():
                 int(inp)
                 try:
                     print(f'What would you like to change {array[int(inp)-1]} to? ')
-                    thread = pool.apply(query, (input(), mc_framework, mc_version))
+                    thread = pool.apply(common.query, (input(), mc_framework, mc_version))
                     array[int(inp)-1] = thread
                     print(f'=> {thread}')
                     continue
@@ -245,40 +211,6 @@ def get_list():
         os.system('pause')
         os._exit(-1)
     return array, mc_version, mc_framework
-
-def download(tup, mc_version, mc_framework):
-    """ Grabs the latest download """
-
-    item = tup["slug"]
-    modfilename = tup["filename"]
-
-    # Get Available Versions
-    req = get(f"https://api.modrinth.com/v2/project/{item}/version")
-
-    for mod_version in loadjson(req.content):
-        if mc_version in mod_version["game_versions"] and mc_framework in mod_version["loaders"]:
-            mod_download = mod_version
-            break
-
-    if not mod_download:
-        print(f"Can't find appropriate version for {item}!")
-        return
-    
-    filename = mod_download["files"][0]["filename"]
-
-    # Check if filename matches
-    if filename == modfilename:
-        print(f'{item} is up-to-date! Yay!')
-        return
-
-    # Actually download it
-    print(f'Downloading: {item}')
-    mod_file = get(mod_download["files"][0]["url"]).content
-
-    # Write to Disk
-    open(f"{filename}", 'wb').write(mod_file)
-    os.remove(modfilename)
-    print(f"{item} has been updated! ({filename})")
 
 def main():
 
@@ -300,7 +232,7 @@ def main():
     print("Please wait!")
 
     for item in list:
-        pool.apply(download, (item, mc_version, mc_framework, ))
+        pool.apply(common.download, (item, mc_version, mc_framework, "update"))
 
 if __name__ == "__main__":
     main()

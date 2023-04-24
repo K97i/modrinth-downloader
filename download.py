@@ -1,43 +1,8 @@
+import os
 from multiprocessing.pool import ThreadPool
 from tkinter import filedialog as fd
-from requests import get
-from json import loads
-import jellyfish
-import re
-import os
 
-def query(item, mc_framework, mc_version):
-    link = f'https://api.modrinth.com/v2/search?query={item}&facets=[["categories:{mc_framework}"],["versions:{mc_version}"]]'
-    req = get(link)
-    cont = loads(req.content)
-
-    # Check if recieved query is blank
-    if not cont["hits"]:
-        return False, None
-
-    # Check if any query is not the query
-    for slug in cont["hits"]:
-        
-        levcomp = 0.0
-        current = ""
-        tf = checkbadmod(item, slug["slug"], mc_framework)
-        lev = 0
-        if not tf:
-            return slug["slug"], None
-        
-        if levcomp > lev:
-            current = tf
-            levcomp = lev
-    
-    return False, current
-
-def checkbadmod(filename, modfilename, modframework):
-    if filename.find(re.sub('\s+','',modfilename).lower()) != -1 and filename.find(modframework) != -1:
-        return False
-    elif jellyfish.levenshtein_distance(filename, modfilename) > len(modfilename) / 2:
-        return True
-    else:
-        return False
+import common
 
 def get_list(mc_framework, mc_version):
     """ Queries Modrinth for the mod's slugs """
@@ -54,7 +19,7 @@ def get_list(mc_framework, mc_version):
     pool = ThreadPool(processes=len(searchlist))
 
     for item in searchlist:
-        thread, badmod = pool.apply(query, (item, mc_framework, mc_version))
+        thread, badmod = pool.apply(common.query, (item, mc_framework, mc_version))
 
         # Check if query returns empty
         if not thread:
@@ -123,7 +88,7 @@ def get_list(mc_framework, mc_version):
                 if ch == "change":
                     print(f'What would you like to change {array[int(inp)-1]} to? ')
                     search = input()
-                    thread = pool.apply(query, (search, mc_framework, mc_version))
+                    thread = pool.apply(common.query, (search, mc_framework, mc_version))
                     if not thread[0]:
                         print("Error!")
                         if thread[1]:
@@ -159,31 +124,6 @@ def get_list(mc_framework, mc_version):
 
     return array
 
-def download(item, mc_framework, mc_version):
-    """ Grabs the latest download """
-
-    mod_download = ""
-
-    # Get Available Versions
-    req = get(f"https://api.modrinth.com/v2/project/{item}/version")
-
-    for mod_version in loads(req.content):
-        if mc_version in mod_version["game_versions"] and mc_framework in mod_version["loaders"]:
-            mod_download = mod_version
-            break
-
-    if not mod_download:
-        print(f"Can't find appropriate version for {item}!")
-        return
-
-    # Actually download it
-    mod_file = get(mod_download["files"][0]["url"]).content
-    filename = mod_download["files"][0]["filename"]
-
-    # Write to Disk
-    open(f"{filename}", 'wb').write(mod_file)
-    print(f"{filename} has been downloaded for {item}!")
-
 def main():
     pool = ThreadPool(processes=64)
 
@@ -191,6 +131,7 @@ def main():
         open("modlist.txt", "wb").write(b'Insert mods here!')
         print("Please enter the names of the mods you would like to download.")
         print("Re-run the program when you have done so. Press any key to exit.")
+        os.startfile('modlist.txt')
         os.system('pause')
         os._exit(1)
 
@@ -213,7 +154,7 @@ def main():
     print("Please wait!")
 
     for item in list:
-        pool.apply(download, (item, mc_framework, mc_version, ))
+        pool.apply(common.download, (item, mc_version, mc_framework, "download"))
 
 if __name__ == "__main__":
     main()
