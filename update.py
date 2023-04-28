@@ -1,25 +1,34 @@
+import asyncio
 import os
+import threading
 import zipfile
 from json import loads as loadjson
-from multiprocessing.pool import ThreadPool
 from tkinter import filedialog as fd
 
+import aiohttp
 from tomllib import loads as loadtoml
 
 import common
+
 
 def get_files():
     modnames = []
     modfilenames = []
     modversionsbase = []
     modversionsminor = []
+    modframeworks = []
     badmods = []
     modids = []
     modversionbase = ""
     modversionminor = ""
+    modframework = ""
 
-    path = fd.askdirectory()
+    print("Select mod folder please!")
+    path = fd.askdirectory(initialdir=os.getcwd())
+
     if not path:
+        print("No folder selected!")
+        os.system('pause')
         os._exit(-1)
     
     print(path, " <= path")
@@ -45,7 +54,7 @@ def get_files():
                 jsonfile = loadjson(jarfile.read("fabric.mod.json"))
                 
                 # Set Values
-                modframework = "fabric"
+                modframeworks.append("fabric")
                 modfilenames.append(x)
                 modnames.append(jsonfile["name"])
                 modids.append(jsonfile["id"])
@@ -64,9 +73,10 @@ def get_files():
                 tomlfile = loadtoml(tomlraw)
 
                 # Set Values
-                modframework = "forge"
+                modframeworks.append("forge")
                 modfilenames.append(x)
                 modnames.append(tomlfile["mods"][0]["modId"])
+                modids.append(tomlfile["mods"][0]["modId"])
                 try:
                     modv = list(filter(lambda test_list: test_list['modId'] == 'minecraft', tomlfile["dependencies"][tomlfile["mods"][0]["modId"]]))
                     modversionsbase.append(modv[0]["versionRange"].strip('[)').split(',')[0].rsplit('.',1)[0])
@@ -76,6 +86,13 @@ def get_files():
         except:
             badmods.append(x)
     
+    for i in modframeworks:
+        curr_frequency = modframeworks.count(i)
+        counter = 0
+        if (curr_frequency> counter):
+            counter = curr_frequency
+            modframework = i
+
     for i in modversionsbase:
         curr_frequency = modversionsbase.count(i)
         counter = 0
@@ -96,59 +113,59 @@ def get_files():
             modversionminor = i
 
     modversion = modversionbase + "." + modversionminor
-    print("Guessed Minecraft Version: ", modversion)
+
+    print("Guessed Minecraft Version:", modversion)
+    print("Guessed Minecraft Mod Loader:", modframework)
     print(len(modnames), "Mods found.")
 
     return modnames, modids, modfilenames, modversion, modframework, badmods
 
-def get_list():
+async def get_list():
     """ Queries Modrinth for the mod's slugs """
     x = 0
     y = 0
     array = []
     not_found = []
+    badmods = []
+    result = []
 
     searchlist, modids, modfilenames, mc_version, mc_framework, badmods = get_files()
-    pool = ThreadPool(processes=len(searchlist))
 
-    for item in modids:
-        thread, badmod = pool.apply(common.query, (item, mc_framework, mc_version))
+    async with aiohttp.ClientSession() as session:
+        tasks = []
+        for item in modids:
+            task = asyncio.ensure_future(common.query(item, mc_framework, mc_version, session, searchlist[modids.index(item)]))
+            tasks.append(task)
+        result = await asyncio.gather(*tasks)
 
-        # Check if query returns empty
-        if not thread:
-            # If different mod found
-            if badmod:
-                dict = {
-                    "name": searchlist[y],
-                    "id": item,
-                    "query": thread,
-                    "reason": "Bad Mod",
-                }
-                not_found.append(dict)
-                y += 1
-                continue
-            
-            # If no mod was found
-            else: 
-                dict = {
-                    "name": searchlist[y],
-                    "id": item,
+    for item in result:
+        if not item[0] and item[1] == None:
+            dict = {
+                    "name": searchlist[modids.index(item[2])],
+                    "id": item[2],
                     "reason": "No Mod Found"
                 }
-                not_found.append(dict)
-                y += 1
-                continue
-        
+            print()
+            not_found.append(dict)
+            continue
+        elif not item[0] and item[1]:
+            dict = {
+                    "name": searchlist[modids.index(item[2])],
+                    "id": item[2],
+                    "query": item[1],
+                    "reason": "Bad Mod",
+                }
+            not_found.append(dict)
+            continue
         dict = {
-            "slug": thread,
+            "name": item[3],
+            "slug": item[0],
             "filename": modfilenames[len(array)+len(not_found)]
         }
-
         x += 1
-        y += 1
-        print(f'{x}: {item} => {thread}')
+        print(f'{x}: {item[3]} => {item[0]}')
         array.append(dict)
-    
+
     if not_found:
         print("\n")
         for item in not_found:
@@ -193,19 +210,58 @@ def get_list():
                 print("Download cancelled!")
                 os._exit(1)
 
-            try:
-                int(inp)
+            if inp.isdigit():
+                print("What would you like to do? (remove, change)")
+                ch = input()
+                
                 try:
-                    print(f'What would you like to change {array[int(inp)-1]} to? ')
-                    thread = pool.apply(common.query, (input(), mc_framework, mc_version))
-                    array[int(inp)-1] = thread
-                    print(f'=> {thread}')
+                    if ch == "remove":
+                        array.pop(int(inp)-1)
+                        searchlist.pop(int(inp)-1)
+                        print("Item Removed.")
+
+                    if ch == "change":
+                        print(f'What would you like to change {array[int(inp)-1]["slug"]} to? ')
+                        search = input()
+                        async with aiohttp.ClientSession() as session:
+                            tasks = []
+                            task = asyncio.ensure_future(common.query(search, mc_framework, mc_version, session, search))
+                            tasks.append(task)
+                            result = await asyncio.gather(*tasks)
+                        if not result[0][0]:
+                            print("Error!")
+                            if result[0][1]:
+                                print(f'Closest mod found is {result[1]}')
+                            else:
+                                print("No mod found.")
+                            continue
+
+                        searchlist[int(inp)-1] = search
+                        array[int(inp)-1] = {
+                            "name": result[0][3],
+                            "slug": result[0][0],
+                            "filename": array[int(inp)-1]["filename"]
+                        }
+                        print(f'=> {result[0][0]}')
+
+                    x = 0
+                    for item in array:
+                        print(f'{x+1}: {item["name"]} => {item["slug"]}')
+                        x += 1
+
+                    if not_found:
+                        print("\n")
+                        for item in not_found:
+                            match item['reason']:
+                                case "Bad Mod":
+                                    print("\033[91m"+ f"{item['name']} => Not found on Modrinth! (Wrong Mod Found, Found: {item['query']})" + "\033[0m")
+                                case "No Mod Found":
+                                    print("\033[91m"+ f"{item['name']} => Not found on Modrinth! (No mod found.)" + "\033[0m")
+                        
                     continue
-                except Exception:
-                    print(f'Error! {Exception}')
+                except Exception as e:
+                    print(f'Error! {e}')
                     continue
-            except:
-                continue
     else:
         print("Empty mod list!")
         os.system('pause')
@@ -214,25 +270,21 @@ def get_list():
 
 def main():
 
-    pool = ThreadPool(processes=64)
-    list, mc_version, mc_framework = get_list()
-
-    print("Select mod folder please!")
-    path = fd.askdirectory(initialdir=os.getcwd())
-
-    if not path:
-        print("No folder selected!")
-        os.system('pause')
-        os._exit(-1)
-
-    os.chdir(path)
-    os.mkdir('./updated-mods')
-    os.chdir("./updated-mods")
+    list, mc_version, mc_framework = asyncio.run(get_list())
 
     print("Please wait!")
 
+    threads = []
     for item in list:
-        pool.apply(common.download, (item, mc_version, mc_framework, "update"))
+        x = threading.Thread(target=common.download, args=(item, mc_version, mc_framework, "update"))
+        x.start()
+        threads.append(x)
+
+    for item in threads:
+        item.join()
+
+    if os.path.exists("mods-that-broke.txt"):
+        os.startfile('mods-that-broke.txt')
 
 if __name__ == "__main__":
     main()
